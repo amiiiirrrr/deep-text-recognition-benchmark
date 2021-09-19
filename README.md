@@ -1,3 +1,13 @@
+# Add PyTorch Static Quantization 
+Static quantization quantizes the weights and activations of the model. It allows the user to fuse activations into preceding layers where possible. Unlike TensorFlow 2.3.0 which supports integer quantization using arbitrary bitwidth from 2 to 16, PyTorch 1.7.0 only supports 8-bit integer quantization. The workflow could be as easy as loading a pre-trained floating point model and apply a static quantization wrapper. However, without doing layer fusion, sometimes such kind of easy manipulation would not result in good model performances.
+
+demo.py and all files in modules folder are updated in order to support PyTorch Static Quantization
+some layers and operations are not supported by PyTorch Quantization so we must use DeQuantStub and QuantStub around those operations to skip them. Operations and layers such as torch.bmm, torch.tanh, F.softmax, torch.cat, torch.nn.LSTMCell, torch.nn.LSTM and F.grid_sample are the examples that pytorch does not support them yet. 
+also instead of "out += residual" you must replace out = "self.skip_add.add(residual, out)" where "self.skip_add = torch.nn.quantized.FloatFunctional()".
+
+# PyTorch Static Quantization results
+Quantization results in 
+
 # What Is Wrong With Scene Text Recognition Model Comparisons? Dataset and Model Analysis
 | [paper](https://arxiv.org/abs/1904.01906) | [training and evaluation data](https://github.com/clovaai/deep-text-recognition-benchmark#download-lmdb-dataset-for-traininig-and-evaluation-from-here) | [failure cases and cleansed label](https://github.com/clovaai/deep-text-recognition-benchmark#download-failure-cases-and-cleansed-label-from-here) | [pretrained model](https://www.dropbox.com/sh/j3xmli4di1zuv3s/AAArdcPgz7UFxIHUuKNOeKv_a?dl=0) | [Baidu ver(passwd:rryk)](https://pan.baidu.com/s/1KSNLv4EY3zFWHpBYlpFCBQ) |
 
