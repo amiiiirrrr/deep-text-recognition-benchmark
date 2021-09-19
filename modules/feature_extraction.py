@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
-
+import torch
 
 class VGG_FeatureExtractor(nn.Module):
     """ FeatureExtractor of CRNN (https://arxiv.org/pdf/1507.05717.pdf) """
@@ -126,6 +126,7 @@ class BasicBlock(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
         self.stride = stride
+        self.skip_add = torch.nn.quantized.FloatFunctional()
 
     def _conv3x3(self, in_planes, out_planes, stride=1):
         "3x3 convolution with padding"
@@ -133,6 +134,7 @@ class BasicBlock(nn.Module):
                          padding=1, bias=False)
 
     def forward(self, x):
+        # print("########## x ", x)
         residual = x
 
         out = self.conv1(x)
@@ -143,8 +145,13 @@ class BasicBlock(nn.Module):
         out = self.bn2(out)
 
         if self.downsample is not None:
+            # print("########## here ############# ")
             residual = self.downsample(x)
-        out += residual
+        # print("########## residual ", residual)
+        
+        # out += residual
+        out = self.skip_add.add(residual, out)
+        
         out = self.relu(out)
 
         return out
@@ -192,6 +199,8 @@ class ResNet(nn.Module):
                                  3], kernel_size=2, stride=1, padding=0, bias=False)
         self.bn4_2 = nn.BatchNorm2d(self.output_channel_block[3])
 
+        self.quanttt = torch.quantization.QuantStub()
+
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
@@ -210,6 +219,7 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
+        x = self.quanttt(x)
         x = self.conv0_1(x)
         x = self.bn0_1(x)
         x = self.relu(x)

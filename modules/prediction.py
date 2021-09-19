@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu' if torch.cuda.is_available() else 'cpu')
 
 
 class Attention(nn.Module):
@@ -12,12 +12,13 @@ class Attention(nn.Module):
         self.hidden_size = hidden_size
         self.num_classes = num_classes
         self.generator = nn.Linear(hidden_size, num_classes)
+        self.quantttttt = torch.quantization.QuantStub()
 
     def _char_to_onehot(self, input_char, onehot_dim=38):
-        input_char = input_char.unsqueeze(1)
+        input_char = input_char.unsqueeze(1).to(device)
         batch_size = input_char.size(0)
         one_hot = torch.FloatTensor(batch_size, onehot_dim).zero_().to(device)
-        one_hot = one_hot.scatter_(1, input_char, 1)
+        one_hot = one_hot.scatter_(1, input_char, 1).to(device)
         return one_hot
 
     def forward(self, batch_H, text, is_train=True, batch_max_length=25):
@@ -41,6 +42,7 @@ class Attention(nn.Module):
                 # hidden : decoder's hidden s_{t-1}, batch_H : encoder's hidden H, char_onehots : one-hot(y_{t-1})
                 hidden, alpha = self.attention_cell(hidden, batch_H, char_onehots)
                 output_hiddens[:, i, :] = hidden[0]  # LSTM hidden index (0: hidden, 1: Cell)
+            output_hiddens = self.quantttttt(output_hiddens)
             probs = self.generator(output_hiddens)
 
         else:
@@ -67,14 +69,29 @@ class AttentionCell(nn.Module):
         self.score = nn.Linear(hidden_size, 1, bias=False)
         self.rnn = nn.LSTMCell(input_size + num_embeddings, hidden_size)
         self.hidden_size = hidden_size
+        self.quanttttt = torch.quantization.QuantStub()
+        self.dequanttttt = torch.quantization.DeQuantStub()
 
     def forward(self, prev_hidden, batch_H, char_onehots):
         # [batch_size x num_encoder_step x num_channel] -> [batch_size x num_encoder_step x hidden_size]
+        # print("########### prev_hidden", prev_hidden)
+        # print("########### batch_H", batch_H)
+        # print("########### char_onehots", char_onehots)
+        prev_hidd = self.quanttttt(prev_hidden[0])
         batch_H_proj = self.i2h(batch_H)
-        prev_hidden_proj = self.h2h(prev_hidden[0]).unsqueeze(1)
-        e = self.score(torch.tanh(batch_H_proj + prev_hidden_proj))  # batch_size x num_encoder_step * 1
-
+        prev_hidden_proj = self.h2h(prev_hidd).unsqueeze(1)
+        # print("########### batch_H_proj", batch_H_proj)
+        # print("########### prev_hidden_proj", prev_hidden_proj)
+        batch_H_proj = self.dequanttttt(batch_H_proj)
+        prev_hidden_proj = self.dequanttttt(prev_hidden_proj)
+        dddd = torch.tanh(batch_H_proj + prev_hidden_proj)
+        dddd = self.quanttttt(dddd)
+        e = self.score(dddd)  # batch_size x num_encoder_step * 1
+        e = self.dequanttttt(e)
         alpha = F.softmax(e, dim=1)
+        # print("########### alpha", alpha)
+        # print("########### batch_H", batch_H)
+        batch_H = self.dequanttttt(batch_H)
         context = torch.bmm(alpha.permute(0, 2, 1), batch_H).squeeze(1)  # batch_size x num_channel
         concat_context = torch.cat([context, char_onehots], 1)  # batch_size x (num_channel + num_embedding)
         cur_hidden = self.rnn(concat_context, prev_hidden)

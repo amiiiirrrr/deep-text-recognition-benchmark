@@ -2,7 +2,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+import time
+device = torch.device('cpu' if torch.cuda.is_available() else 'cpu')
 
 
 class TPS_SpatialTransformerNetwork(nn.Module):
@@ -25,6 +26,7 @@ class TPS_SpatialTransformerNetwork(nn.Module):
         self.I_channel_num = I_channel_num
         self.LocalizationNetwork = LocalizationNetwork(self.F, self.I_channel_num)
         self.GridGenerator = GridGenerator(self.F, self.I_r_size)
+        self.dequantt = torch.quantization.DeQuantStub()
 
     def forward(self, batch_I):
         batch_C_prime = self.LocalizationNetwork(batch_I)  # batch_size x K x 2
@@ -32,6 +34,9 @@ class TPS_SpatialTransformerNetwork(nn.Module):
         build_P_prime_reshape = build_P_prime.reshape([build_P_prime.size(0), self.I_r_size[0], self.I_r_size[1], 2])
         
         if torch.__version__ > "1.2.0":
+            # print("########## batch_I", batch_I)
+            # print("########## build_P_prime_reshape", build_P_prime_reshape)
+            batch_I = self.dequantt(batch_I)
             batch_I_r = F.grid_sample(batch_I, build_P_prime_reshape, padding_mode='border', align_corners=True)
         else:
             batch_I_r = F.grid_sample(batch_I, build_P_prime_reshape, padding_mode='border')
@@ -100,7 +105,8 @@ class GridGenerator(nn.Module):
         ## for fine-tuning with different image width, you may use below instead of self.register_buffer
         #self.inv_delta_C = torch.tensor(self._build_inv_delta_C(self.F, self.C)).float().cuda()  # F+3 x F+3
         #self.P_hat = torch.tensor(self._build_P_hat(self.F, self.C, self.P)).float().cuda()  # n x F+3
-
+        self.quant = torch.quantization.QuantStub()
+        self.dequant = torch.quantization.DeQuantStub()
     def _build_C(self, F):
         """ Return coordinates of fiducial points in I_r; C """
         ctrl_pts_x = np.linspace(-1.0, 1.0, int(F / 2))
@@ -154,11 +160,23 @@ class GridGenerator(nn.Module):
 
     def build_P_prime(self, batch_C_prime):
         """ Generate Grid from batch_C_prime [batch_size x F x 2] """
+        # print("########## batch_C_prime", batch_C_prime)
         batch_size = batch_C_prime.size(0)
+        # print("########## batch_size", batch_size)
         batch_inv_delta_C = self.inv_delta_C.repeat(batch_size, 1, 1)
+        # batch_inv_delta_C = torch.quantize_per_tensor(batch_inv_delta_C, 0.001, 0, torch.quint8)
         batch_P_hat = self.P_hat.repeat(batch_size, 1, 1)
-        batch_C_prime_with_zeros = torch.cat((batch_C_prime, torch.zeros(
-            batch_size, 3, 2).float().to(device)), dim=1)  # batch_size x F+3 x 2
+        xxxx = torch.zeros(batch_size, 3, 2).float().to(device)
+        # print("########## xxxx", xxxx)
+        # xxxx = torch.quantize_per_tensor(xxxx, 0.001, 0, torch.quint8)
+        xxxx = self.quant(xxxx)
+        batch_C_prime_with_zeros = torch.cat((batch_C_prime, xxxx), dim=1)  # batch_size x F+3 x 2
+        # print("########## batch_inv_delta_C", batch_inv_delta_C)
+        # print("########## batch_C_prime_with_zeros", batch_C_prime_with_zeros)
+        # batch_inv_delta_C = self.quant(batch_inv_delta_C)
+        sss = time.time()
+        batch_C_prime_with_zeros = self.dequant(batch_C_prime_with_zeros)
+        print("#############",time.time() - sss)
         batch_T = torch.bmm(batch_inv_delta_C, batch_C_prime_with_zeros)  # batch_size x F+3 x 2
         batch_P_prime = torch.bmm(batch_P_hat, batch_T)  # batch_size x n x 2
         return batch_P_prime  # batch_size x n x 2
