@@ -6,7 +6,7 @@ some layers and operations are not supported by PyTorch Quantization so we must 
 also instead of "out += residual" you must replace out = "self.skip_add.add(residual, out)" where "self.skip_add = torch.nn.quantized.FloatFunctional()".
 
 # PyTorch Static Quantization results
-Quantization results in 
+Quantization results in reduction TPS-ResNet-BiLSTM-Attn.pth size from 189Mb to 59Mb and about twice as fast in inference time on cpu.
 
 # What Is Wrong With Scene Text Recognition Model Comparisons? Dataset and Model Analysis
 | [paper](https://arxiv.org/abs/1904.01906) | [training and evaluation data](https://github.com/clovaai/deep-text-recognition-benchmark#download-lmdb-dataset-for-traininig-and-evaluation-from-here) | [failure cases and cleansed label](https://github.com/clovaai/deep-text-recognition-benchmark#download-failure-cases-and-cleansed-label-from-here) | [pretrained model](https://www.dropbox.com/sh/j3xmli4di1zuv3s/AAArdcPgz7UFxIHUuKNOeKv_a?dl=0) | [Baidu ver(passwd:rryk)](https://pan.baidu.com/s/1KSNLv4EY3zFWHpBYlpFCBQ) |
